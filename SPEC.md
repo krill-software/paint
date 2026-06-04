@@ -102,19 +102,46 @@ work, always visible — not hidden behind keyboard-only shortcuts.
 
 ## Tools (v1)
 
+The rail splits tools into two sections — **Draw** (freehand implements and
+paint utilities) and **Geometry** (shapes drawn by dragging a bounding box).
+Buttons are **icon-only**: the glyphs are conventional, and hovering shows the
+name + key. The active tool gets the accent border + faint accent ground.
+
+### Draw
+
 | Tool | Behavior | Key |
 |---|---|---|
-| **Pencil** | 1px hard freehand, ignores brush size | `B` then… (default tool) |
-| **Brush** | Round freehand stroke at brush size | `B` |
-| **Eraser** | Freehand paint in white at brush size | `E` |
-| **Line** | Click-drag straight line, committed on release | `L` |
-| **Rectangle** | Click-drag box outline (stroke) | `R` |
-| **Ellipse** | Click-drag ellipse outline (stroke) | `O` |
-| **Fill** | Flood-fill the contiguous region under the click | `G` |
-| **Eyedropper** | Pick the pixel color under the click into foreground | `I` |
+| **Pencil** | 1 px hard freehand; ignores brush size. | `P` |
+| **Brush** | Round, hard-edged freehand stroke at brush size. (Default tool.) | `B` |
+| **Paintbrush** | Soft round stroke — a thin core carried by a feathered halo that builds up where strokes overlap. Brush size sets its reach. | `A` |
+| **Roller** | Broad flat band with square ends, ~3× brush size (clamped 12–120 px). For covering area fast. | `O` |
+| **Eraser** | Freehand paint in white at brush size. | `E` |
+| **Fill** | Flood-fill the contiguous region under the click. | `F` |
+| **Pick color** | Eyedropper — set the foreground color from the pixel under the click. | `I` |
 
-Shape/line tools draw a live preview on an overlay while dragging and commit
-to the bitmap on mouse-up (so an in-flight drag is undo-free until released).
+### Geometry
+
+**Dot** is a one-click stamp (a filled circle at the brush size); the rest
+draw a live preview on the overlay while dragging and commit on release (an
+in-flight drag is undo-free until let go). A **filled / outline toggle** in the
+section header decides whether the closed shapes fill with the foreground color
+or stroke at the brush size — and the tool glyphs fill to match. (Line is
+always a stroke; Dot is always filled.)
+
+| Tool | Behavior | Key |
+|---|---|---|
+| **Dot** | One click stamps a filled circle at the brush size. | `D` |
+| **Line** | Straight line between press and release. | `L` |
+| **Triangle** | Isosceles triangle filling the drag box, apex centered at top. | `T` |
+| **Square** | Constrained to 1:1 (side = shorter drag axis). | `S` |
+| **Rectangle** | Free box. | `R` |
+| **Hexagon** | Regular hexagon inscribed in the drag box, flat top. | `H` |
+| **Octagon** | Regular octagon inscribed in the drag box, flat top. | `X` |
+| **Circle** | True circle — diameter = shorter drag axis. | `C` |
+| **Ellipse** | Free ellipse filling the drag box. | `G` |
+
+**Deferred — cone.** A 3-D cone projected onto the 2-D surface (a triangle
+with a rounded base). Out of v1; revisit once the rest of Geometry settles.
 
 ## Undo / redo
 
@@ -153,9 +180,11 @@ to the bitmap on mouse-up (so an in-flight drag is undo-free until released).
 | Open | `Ctrl+O` |
 | Save / Save As | `Ctrl+S` / `Ctrl+Shift+S` |
 | Undo / Redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
-| Pencil / Brush / Eraser | `P` / `B` / `E` |
-| Line / Rectangle / Ellipse | `L` / `R` / `O` |
-| Fill / Eyedropper | `G` / `I` |
+| Pencil / Brush / Paintbrush / Roller | `P` / `B` / `A` / `O` |
+| Eraser / Fill / Pick color | `E` / `F` / `I` |
+| Dot / Line / Triangle / Square | `D` / `L` / `T` / `S` |
+| Rectangle / Hexagon / Octagon | `R` / `H` / `X` |
+| Circle / Ellipse | `C` / `G` |
 | Clear canvas | `Ctrl+Backspace` |
 | `[` / `]` | Decrease / increase brush size |
 | Quit | `Ctrl+Q` |
@@ -164,8 +193,10 @@ to the bitmap on mouse-up (so an in-flight drag is undo-free until released).
 
 - Custom titlebar via the shell layout; filename centered (managed by the
   main-topbar drag region + `document.title`), dirty `•` prefix.
-- **Aux rail:** Tools block, Color block (well + size slider + recent
-  swatches), Edit block (undo / redo / clear). Hint line at the bottom.
+- **Aux rail (top → bottom):** Color block (well + size slider + recent
+  swatches), Draw block, Geometry block (with the filled/outline toggle in
+  its header) — both icon-only tool grids — and the Edit block (undo / redo /
+  clear, also icon-only).
 - **No status line** (matches audio-editor's shell layout). Canvas size +
   cursor position are surfaced in the mono info line under the canvas.
 
@@ -188,20 +219,24 @@ recorded in [`scripts/render-icons.py`](https://github.com/krill-software/.githu
 - **Foreground + background color** (MS Paint's left/right-click model) —
   v1 is single foreground color. Likely worth adding.
 - **Zoom / pan** — v1 is 100% only, scroll if the image overflows.
-- **Text tool**, **filled** (vs. stroked) shapes, **rounded rect**,
-  **polygon**, **spray/airbrush** — deferred.
+- **Text tool**, **rounded rect**, **spray/airbrush**, **filled variants**
+  of the outline shapes (only Dot fills today) — deferred.
+- **Cone** geometry (triangle with a rounded base) — deferred, see Tools.
 - **Resize / crop canvas**, **New with size prompt** — deferred.
 - Whether "Paint" is the right slug vs. `sketch` / `paint-editor`.
 
 ## Milestones
 
-1. **M1 — Skeleton + draw + save.** *(this pass)* Shell-app layout; blank
-   canvas on boot; pencil / brush / eraser / line / rect / ellipse / fill /
-   eyedropper; foreground color + brush size; snapshot undo/redo; New / Open
-   (PNG + webview-decodable rasters) / Save / Save As PNG; CLI arg + drag-drop
-   open; canonical `brush` icon.
-2. **M2 — Color & comfort.** Foreground/background colors, recent-swatch
+1. **M1 — Skeleton + draw + save.** *(shipped)* Shell-app layout; blank
+   canvas on boot; foreground color + brush size; snapshot undo/redo; New /
+   Open (PNG + webview-decodable rasters) / Save / Save As PNG; CLI arg +
+   drag-drop open; canonical `brush` icon.
+2. **M1.5 — Tool set + rail.** *(this pass)* Color-first rail; Draw / Geometry
+   split with icon-only grids; pencil / brush / paintbrush / roller / eraser /
+   fill / pick; dot (one-click stamp) / line / triangle / square / rectangle /
+   hexagon / octagon / circle / ellipse; filled-vs-outline toggle for the
+   closed shapes (glyphs fill to match).
+3. **M2 — Color & comfort.** Foreground/background colors, recent-swatch
    persistence, New-with-size prompt, canvas resize/crop, zoom.
-3. **M3 — Packaging & site.** `docs/` landing page, org-site card, release via
-   shared workflow. *(Paint is not graduated until the design bar is signed
-   off — do not release before then.)*
+4. **M3 — Packaging & site.** `docs/` landing page, org-site card, release via
+   shared workflow. *(Graduated — released as v0.1.0.)*

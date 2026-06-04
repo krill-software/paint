@@ -28,14 +28,24 @@ interface AppState {
 }
 
 type Tool =
+  // Draw — freehand implements + paint utilities
   | "pencil"
   | "brush"
+  | "paintbrush"
+  | "roller"
   | "eraser"
-  | "line"
-  | "rect"
-  | "ellipse"
   | "fill"
-  | "eyedropper";
+  | "eyedropper"
+  // Geometry — drag-a-box shapes
+  | "line"
+  | "triangle"
+  | "square"
+  | "rectangle"
+  | "hexagon"
+  | "octagon"
+  | "circle"
+  | "ellipse"
+  | "dot";
 
 // ---- Constants --------------------------------------------------------
 
@@ -68,6 +78,7 @@ let redoBtn: HTMLButtonElement;
 let tool: Tool = "brush";
 let color = "#30343f"; // Space Cadet to start — replaced from saved state
 let brushSize = 6;
+let shapeFill = false; // geometry shapes: false = outline, true = filled
 let recent: string[] = [];
 
 let canvasName = "untitled.png";
@@ -291,19 +302,47 @@ function pointFromEvent(e: PointerEvent): Pt {
 
 // ---- Drawing ----------------------------------------------------------
 
-function strokeStyleFor(t: Tool): { color: string; width: number } {
-  if (t === "eraser") return { color: WHITE, width: brushSize };
-  if (t === "pencil") return { color, width: 1 };
-  return { color, width: brushSize };
+interface FreehandStyle {
+  color: string;
+  width: number;
+  cap: CanvasLineCap;
+  join: CanvasLineJoin;
+  soft: boolean; // feathered edge (paintbrush)
+}
+
+function freehandStyleFor(t: Tool): FreehandStyle {
+  if (t === "eraser") return { color: WHITE, width: brushSize, cap: "round", join: "round", soft: false };
+  if (t === "pencil") return { color, width: 1, cap: "round", join: "round", soft: false };
+  if (t === "roller") {
+    // A broad, flat band with square ends — covers area fast.
+    return { color, width: Math.max(12, Math.min(120, brushSize * 3)), cap: "square", join: "bevel", soft: false };
+  }
+  if (t === "paintbrush") {
+    // Soft round stroke — a thin core carried by a feathered halo.
+    return { color, width: Math.max(1, brushSize * 0.45), cap: "round", join: "round", soft: true };
+  }
+  return { color, width: brushSize, cap: "round", join: "round", soft: false }; // brush
+}
+
+/** Drop any soft-brush feather so the next op draws crisp. */
+function clearStrokeFeather(): void {
+  bctx.shadowBlur = 0;
+  bctx.shadowColor = "transparent";
 }
 
 function beginFreehand(p: Pt, t: Tool): void {
-  const s = strokeStyleFor(t);
+  const s = freehandStyleFor(t);
   bctx.strokeStyle = s.color;
   bctx.fillStyle = s.color;
   bctx.lineWidth = s.width;
-  bctx.lineCap = "round";
-  bctx.lineJoin = "round";
+  bctx.lineCap = s.cap;
+  bctx.lineJoin = s.join;
+  if (s.soft) {
+    bctx.shadowColor = s.color;
+    bctx.shadowBlur = Math.max(2, brushSize * 0.7);
+  } else {
+    clearStrokeFeather();
+  }
   // A dot so a single click leaves a mark.
   bctx.beginPath();
   bctx.arc(p.x, p.y, Math.max(0.5, s.width / 2), 0, Math.PI * 2);
@@ -319,40 +358,110 @@ function extendFreehand(p: Pt): void {
   bctx.moveTo(p.x, p.y);
 }
 
+const SHAPE_TOOLS = new Set<Tool>([
+  "line", "triangle", "square", "rectangle", "hexagon", "octagon", "circle", "ellipse",
+]);
+// Shapes the filled/outline toggle applies to (a line can't be filled).
+const FILLABLE_TOOLS = new Set<Tool>([
+  "triangle", "square", "rectangle", "hexagon", "octagon", "circle", "ellipse",
+]);
+
+function isShapeTool(t: Tool): boolean {
+  return SHAPE_TOOLS.has(t);
+}
+
+/** Stamp a single filled dot (the Dot tool) at `p`, sized by the brush. */
+function stampDot(p: Pt): void {
+  bctx.shadowBlur = 0;
+  bctx.fillStyle = color;
+  bctx.beginPath();
+  bctx.arc(p.x, p.y, Math.max(0.5, brushSize / 2), 0, Math.PI * 2);
+  bctx.fill();
+}
+
+/** Add a shape's path to `ctx` (no begin / stroke / fill). Every shape is
+ *  sized by the drag bounding box from `a` to `b`. */
+function addShapePath(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, t: Tool): void {
+  const x0 = Math.min(a.x, b.x), y0 = Math.min(a.y, b.y);
+  const x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y);
+  const w = x1 - x0, h = y1 - y0;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+
+  if (t === "line") {
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    return;
+  }
+  if (t === "rectangle") {
+    ctx.rect(x0, y0, w, h);
+    return;
+  }
+  if (t === "square") {
+    // Constrained to 1:1 — side is the shorter drag axis, grown from the
+    // press point toward the cursor.
+    const side = Math.min(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+    const ox = b.x >= a.x ? a.x : a.x - side;
+    const oy = b.y >= a.y ? a.y : a.y - side;
+    ctx.rect(ox, oy, side, side);
+    return;
+  }
+  if (t === "triangle") {
+    // Isosceles, apex centered at the top of the box.
+    ctx.moveTo(cx, y0);
+    ctx.lineTo(x1, y1);
+    ctx.lineTo(x0, y1);
+    ctx.closePath();
+    return;
+  }
+  if (t === "ellipse") {
+    ctx.ellipse(cx, cy, w / 2, h / 2, 0, 0, Math.PI * 2);
+    return;
+  }
+  if (t === "circle") {
+    // Constrained to a true circle — diameter is the shorter drag axis.
+    const d = Math.min(w, h);
+    const ox = b.x >= a.x ? a.x : a.x - d;
+    const oy = b.y >= a.y ? a.y : a.y - d;
+    ctx.ellipse(ox + d / 2, oy + d / 2, d / 2, d / 2, 0, 0, Math.PI * 2);
+    return;
+  }
+  // Regular polygon (hexagon / octagon) inscribed in the box, flat top.
+  const n = t === "hexagon" ? 6 : 8;
+  const start = -Math.PI / 2 + Math.PI / n;
+  for (let i = 0; i < n; i++) {
+    const ang = start + (i * 2 * Math.PI) / n;
+    const px = cx + (w / 2) * Math.cos(ang);
+    const py = cy + (h / 2) * Math.sin(ang);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+function renderShape(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, t: Tool): void {
+  ctx.shadowBlur = 0;
+  ctx.beginPath();
+  addShapePath(ctx, a, b, t);
+  if (shapeFill && t !== "line") {
+    ctx.fillStyle = color;
+    ctx.fill();
+  } else {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+  }
+}
+
 function drawShapePreview(a: Pt, b: Pt, t: Tool): void {
   octx.clearRect(0, 0, overlay.width, overlay.height);
-  octx.strokeStyle = color;
-  octx.lineWidth = brushSize;
-  octx.lineCap = "round";
-  octx.lineJoin = "round";
-  shapePath(octx, a, b, t);
-  octx.stroke();
+  renderShape(octx, a, b, t);
 }
 
 function commitShape(a: Pt, b: Pt, t: Tool): void {
   octx.clearRect(0, 0, overlay.width, overlay.height);
-  bctx.strokeStyle = color;
-  bctx.lineWidth = brushSize;
-  bctx.lineCap = "round";
-  bctx.lineJoin = "round";
-  shapePath(bctx, a, b, t);
-  bctx.stroke();
-}
-
-function shapePath(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, t: Tool): void {
-  ctx.beginPath();
-  if (t === "line") {
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-  } else if (t === "rect") {
-    ctx.rect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
-  } else if (t === "ellipse") {
-    const cx = (a.x + b.x) / 2;
-    const cy = (a.y + b.y) / 2;
-    const rx = Math.abs(b.x - a.x) / 2;
-    const ry = Math.abs(b.y - a.y) / 2;
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-  }
+  renderShape(bctx, a, b, t);
 }
 
 // ---- Flood fill -------------------------------------------------------
@@ -427,7 +536,13 @@ function installPointer(): void {
       markEdited();
       return;
     }
-    if (tool === "line" || tool === "rect" || tool === "ellipse") {
+    if (tool === "dot") {
+      pushUndo();
+      stampDot(p);
+      markEdited();
+      return;
+    }
+    if (isShapeTool(tool)) {
       pushUndo();
       shapeStart = p;
       drawing = true;
@@ -456,6 +571,8 @@ function installPointer(): void {
     if (shapeStart) {
       commitShape(shapeStart, p, tool);
       shapeStart = null;
+    } else {
+      clearStrokeFeather(); // end any soft (paintbrush) stroke
     }
     drawing = false;
     markEdited();
@@ -531,32 +648,62 @@ function persist(): void {
 
 // ---- Rail -------------------------------------------------------------
 
-const TOOLS: Array<{ tool: Tool; label: string; icon: string; key: string }> = [
+interface ToolDef { tool: Tool; label: string; icon: string; key: string }
+
+const DRAW_TOOLS: ToolDef[] = [
   { tool: "pencil", label: "Pencil", icon: "pencil", key: "P" },
   { tool: "brush", label: "Brush", icon: "brush", key: "B" },
+  { tool: "paintbrush", label: "Paintbrush", icon: "paintbrush", key: "A" },
+  { tool: "roller", label: "Roller", icon: "roller", key: "O" },
   { tool: "eraser", label: "Eraser", icon: "eraser", key: "E" },
-  { tool: "line", label: "Line", icon: "line", key: "L" },
-  { tool: "rect", label: "Rectangle", icon: "square", key: "R" },
-  { tool: "ellipse", label: "Ellipse", icon: "circle", key: "O" },
-  { tool: "fill", label: "Fill", icon: "bucket", key: "G" },
+  { tool: "fill", label: "Fill", icon: "bucket", key: "F" },
   { tool: "eyedropper", label: "Pick color", icon: "pipette", key: "I" },
+];
+
+const GEOMETRY_TOOLS: ToolDef[] = [
+  { tool: "dot", label: "Dot", icon: "dot", key: "D" },
+  { tool: "line", label: "Line", icon: "line", key: "L" },
+  { tool: "triangle", label: "Triangle", icon: "triangle", key: "T" },
+  { tool: "square", label: "Square", icon: "square", key: "S" },
+  { tool: "rectangle", label: "Rectangle", icon: "rectangle", key: "R" },
+  { tool: "hexagon", label: "Hexagon", icon: "hexagon", key: "H" },
+  { tool: "octagon", label: "Octagon", icon: "octagon", key: "X" },
+  { tool: "circle", label: "Circle", icon: "circle", key: "C" },
+  { tool: "ellipse", label: "Ellipse", icon: "ellipse", key: "G" },
 ];
 
 function buildRail(): void {
   railEl.replaceChildren();
   railEl.appendChild(buildAuxTopbar());
 
-  // Tools
-  const tools = railBlock("Tools");
-  for (const t of TOOLS) {
-    const b = railBtnIcon(t.label, t.icon, () => setTool(t.tool));
-    b.dataset.tool = t.tool;
-    b.title = `${t.label} (${t.key})`;
-    tools.appendChild(b);
-  }
-  railEl.appendChild(tools);
+  railEl.appendChild(buildColorBlock());
+  railEl.appendChild(buildToolGrid("Draw", DRAW_TOOLS));
+  railEl.appendChild(buildToolGrid("Geometry", GEOMETRY_TOOLS, buildFillToggle()));
 
-  // Color
+  // Edit
+  const editBlock = railBlock("Edit");
+  const editGrid = document.createElement("div");
+  editGrid.className = "rail-grid";
+  undoBtn = railIconBtn("undo", "Undo (Ctrl+Z)", () => undo());
+  redoBtn = railIconBtn("redo", "Redo (Ctrl+Shift+Z)", () => redo());
+  const clearBtn = railIconBtn("trash", "Clear canvas (Ctrl+Backspace)", () => clearCanvas());
+  editGrid.append(undoBtn, redoBtn, clearBtn);
+  editBlock.appendChild(editGrid);
+  railEl.appendChild(editBlock);
+
+  paintSwatches();
+  refreshEditButtons();
+}
+
+/** Rebuild the rail in place — used when the fill toggle flips so the
+ *  geometry glyphs re-render filled/outline. State lives in module vars,
+ *  so we just rebuild and re-apply the active tool. */
+function rebuildRail(): void {
+  buildRail();
+  setTool(tool);
+}
+
+function buildColorBlock(): HTMLDivElement {
   const colBlock = railBlock("Color");
   const well = document.createElement("input");
   well.type = "color";
@@ -589,26 +736,65 @@ function buildRail(): void {
   swatchRow = document.createElement("div");
   swatchRow.className = "swatch-row";
   colBlock.appendChild(swatchRow);
-  railEl.appendChild(colBlock);
+  return colBlock;
+}
 
-  // Edit
-  const editBlock = railBlock("Edit");
-  undoBtn = railBtnIcon("Undo", "undo", () => undo());
-  undoBtn.title = "Undo (Ctrl+Z)";
-  redoBtn = railBtnIcon("Redo", "redo", () => redo());
-  redoBtn.title = "Redo (Ctrl+Shift+Z)";
-  const clearBtn = railBtnIcon("Clear", "trash", () => clearCanvas());
-  clearBtn.title = "Clear canvas (Ctrl+Backspace)";
-  editBlock.append(undoBtn, redoBtn, clearBtn);
-  railEl.appendChild(editBlock);
+/** Whether a tool's rail glyph should render solid. Dot is always a dot;
+ *  the other closed shapes follow the fill toggle. */
+function toolIconFilled(t: Tool): boolean {
+  if (t === "dot") return true;
+  if (FILLABLE_TOOLS.has(t)) return shapeFill;
+  return false;
+}
 
-  const hint = document.createElement("div");
-  hint.className = "rail-hint";
-  hint.textContent = "Drag to draw. Shapes commit on release. Pick a color off the canvas with the eyedropper.";
-  railEl.appendChild(hint);
+function buildToolGrid(title: string, defs: ToolDef[], accessory?: HTMLElement): HTMLDivElement {
+  const block = document.createElement("div");
+  block.className = "rail-block";
 
-  paintSwatches();
-  refreshEditButtons();
+  const header = document.createElement("div");
+  header.className = accessory ? "rail-header rail-header-row" : "rail-header";
+  const titleSpan = document.createElement("span");
+  titleSpan.textContent = title;
+  header.appendChild(titleSpan);
+  if (accessory) header.appendChild(accessory);
+  block.appendChild(header);
+
+  const grid = document.createElement("div");
+  grid.className = "rail-grid";
+  for (const d of defs) {
+    const b = railIconBtn(d.icon, `${d.label} (${d.key})`, () => setTool(d.tool), toolIconFilled(d.tool));
+    b.dataset.tool = d.tool;
+    grid.appendChild(b);
+  }
+  block.appendChild(grid);
+  return block;
+}
+
+/** Outline / filled segmented toggle, lives in the Geometry header. */
+function buildFillToggle(): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "fill-toggle";
+  const seg = (filled: boolean, label: string) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "fill-toggle-btn";
+    btn.title = label;
+    btn.dataset.on = shapeFill === filled ? "true" : "false";
+    btn.append(svgIcon("square", 14, filled));
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setShapeFill(filled);
+    });
+    return btn;
+  };
+  wrap.append(seg(false, "Outline shapes"), seg(true, "Filled shapes"));
+  return wrap;
+}
+
+function setShapeFill(v: boolean): void {
+  if (shapeFill === v) return;
+  shapeFill = v;
+  rebuildRail();
 }
 
 function clearCanvas(): void {
@@ -628,14 +814,12 @@ function railBlock(label: string): HTMLDivElement {
   return block;
 }
 
-function railBtnIcon(label: string, icon: string, onClick: () => void): HTMLButtonElement {
+function railIconBtn(icon: string, title: string, onClick: () => void, filled = false): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
-  b.className = "rail-btn";
-  b.append(svgIcon(icon, 14));
-  const span = document.createElement("span");
-  span.textContent = label;
-  b.append(span);
+  b.className = "rail-tool";
+  b.title = title;
+  b.append(svgIcon(icon, 16, filled));
   b.addEventListener("click", onClick);
   return b;
 }
@@ -772,14 +956,24 @@ function installKeyboard(): void {
     if (mod) return; // leave other ctrl combos alone
 
     switch (e.code) {
+      // Draw
       case "KeyP": setTool("pencil"); break;
       case "KeyB": setTool("brush"); break;
+      case "KeyA": setTool("paintbrush"); break;
+      case "KeyO": setTool("roller"); break;
       case "KeyE": setTool("eraser"); break;
-      case "KeyL": setTool("line"); break;
-      case "KeyR": setTool("rect"); break;
-      case "KeyO": setTool("ellipse"); break;
-      case "KeyG": setTool("fill"); break;
+      case "KeyF": setTool("fill"); break;
       case "KeyI": setTool("eyedropper"); break;
+      // Geometry
+      case "KeyL": setTool("line"); break;
+      case "KeyT": setTool("triangle"); break;
+      case "KeyS": setTool("square"); break;
+      case "KeyR": setTool("rectangle"); break;
+      case "KeyH": setTool("hexagon"); break;
+      case "KeyX": setTool("octagon"); break;
+      case "KeyC": setTool("circle"); break;
+      case "KeyG": setTool("ellipse"); break;
+      case "KeyD": setTool("dot"); break;
       case "BracketLeft": setBrushSize(brushSize - 1); break;
       case "BracketRight": setBrushSize(brushSize + 1); break;
       default: return;
@@ -804,15 +998,16 @@ async function installFileDrop(): Promise<void> {
 
 /** Hand-rolled Lucide-style glyphs. Window controls use a 12×12 box /
  *  1.2 stroke (matches desktop-ui); everything else 24×24 / 1.8. */
-function svgIcon(kind: string, size = 16): SVGSVGElement {
+function svgIcon(kind: string, size = 16, filled = false): SVGSVGElement {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   const small = kind === "minus" || kind === "square-sm" || kind === "x" || kind === "menu";
   const isWinSquare = kind === "square" && size <= 12;
   const box = small || isWinSquare ? "0 0 12 12" : "0 0 24 24";
+  const solid = filled || kind === "dot"; // filled shapes + the dot read solid
   svg.setAttribute("viewBox", box);
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("fill", solid ? "currentColor" : "none");
+  svg.setAttribute("stroke", solid ? "none" : "currentColor");
   svg.setAttribute("stroke-width", small || isWinSquare ? "1.2" : "1.8");
   svg.setAttribute("stroke-linecap", "round");
   svg.setAttribute("stroke-linejoin", "round");
@@ -838,6 +1033,25 @@ function svgIcon(kind: string, size = 16): SVGSVGElement {
     ],
     line: ["M5 19 19 5"],
     circle: ["M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"],
+    ellipse: ["M22 12a10 6 0 1 1-20 0 10 6 0 0 1 20 0z"],
+    paintbrush: [
+      "M10 12V5a2 2 0 0 1 4 0v7",
+      "M9 12h6v2H9z",
+      "M9.6 14h4.8l-1.1 5.4a1.4 1.4 0 0 1-2.6 0z",
+    ],
+    roller: [
+      "M4 4h13a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z",
+      "M14 9v2a2 2 0 0 1-2 2h-2a1 1 0 0 0-1 1v6",
+    ],
+    triangle: ["M12 4 21 19H3Z"],
+    rectangle: ["M3 6h18v12H3z"],
+    hexagon: [
+      "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z",
+    ],
+    octagon: [
+      "M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z",
+    ],
+    dot: ["M12 5a7 7 0 1 0 0 14 7 7 0 1 0 0-14z"],
     bucket: [
       "m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z",
       "m5 2 5 5",

@@ -214,46 +214,69 @@ body[data-dirty="true"] .main-title::after {
   color: var(--fm-muted);
   margin-bottom: 6px;
 }
-
-.rail-hint {
-  font-size: 12px;
-  color: var(--fm-muted);
-  line-height: 1.4;
-  margin-top: 8px;
-}
-
-.rail-btn {
+.rail-header-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 6px 10px;
-  margin-bottom: 4px;
+  justify-content: space-between;
+}
+
+/* Outline / filled segmented toggle in the Geometry header. */
+.fill-toggle { display: flex; gap: 3px; }
+.fill-toggle-btn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: 1px solid var(--fm-rule);
   border-radius: 4px;
-  color: var(--fm-text);
-  font-family: var(--fm-mono);
-  font-size: 12px;
-  text-align: left;
+  color: var(--fm-muted);
   cursor: pointer;
+  padding: 0;
   transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
 }
-.rail-btn svg { color: var(--fm-muted); flex-shrink: 0; }
-.rail-btn:hover:not(:disabled) svg { color: var(--fm-text); }
-.rail-btn:hover:not(:disabled) {
-  background: var(--fm-rule);
-  border-color: var(--fm-rule-strong);
-}
-.rail-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* Active tool: accent border + faint accent ground + accent glyph. */
-.rail-btn[data-active="true"] {
+.fill-toggle-btn:hover { border-color: var(--fm-rule-strong); color: var(--fm-text); }
+.fill-toggle-btn[data-on="true"] {
   border-color: var(--fm-accent);
   background: rgba(221, 117, 150, 0.10);
+  color: var(--fm-accent);
+}
+.fill-toggle-btn svg { width: 12px; height: 12px; }
+
+/* Tool / edit buttons — icon-only squares in a 4-up grid. The glyphs are
+ * conventional enough to skip labels; the name + key live in the tooltip. */
+.rail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.rail-tool {
+  aspect-ratio: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--fm-rule);
+  border-radius: 6px;
+  color: var(--fm-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
+}
+.rail-tool:hover:not(:disabled) {
+  background: var(--fm-rule);
+  border-color: var(--fm-rule-strong);
   color: var(--fm-text);
 }
-.rail-btn[data-active="true"] svg { color: var(--fm-accent); }
+.rail-tool:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Active tool: accent border + faint accent ground + accent glyph. */
+.rail-tool[data-active="true"] {
+  border-color: var(--fm-accent);
+  background: rgba(221, 117, 150, 0.10);
+  color: var(--fm-accent);
+}
 
 /* Color block ------------------------------------------------------- */
 
