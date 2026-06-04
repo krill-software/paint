@@ -1,0 +1,215 @@
+---
+layout: app
+tagline: a calm single-file paint program for Linux
+description: A minimal single-file Linux paint program. Blank canvas on launch, brush and shape tools, flood fill, eyedropper, undo, save as PNG. One bitmap, no layers.
+og_description: A calm single-file paint program for Linux. Free and open source.
+eyebrow: A paint program for Linux
+heading: "Draw it, <em>save</em> it."
+lede: Open a blank canvas the moment it launches. Draw freehand, lay down lines and boxes and ellipses, flood-fill a region, pick a color off the canvas, undo. Save it as a PNG. The bar is the paint program you already know — not a layered compositor.
+features_heading: One canvas. The 80% of paint.
+features:
+  - tag: Draw
+    title: Eight tools, one bitmap
+    blurb: Pencil, brush, eraser, straight lines, rectangles, ellipses, flood fill, and an eyedropper. Pick one from the rail and draw — shapes preview live as you drag and commit to pixels the moment you release.
+  - tag: One canvas
+    title: No layers, on purpose
+    blurb: One bitmap, like the paint program you already know. What you see on the canvas is the document — no layer stack, no masks, no blend modes, no channels, nothing extra to learn.
+  - tag: PNG in / PNG out
+    title: The canvas makes the bytes
+    blurb: Open a PNG — or any raster the system webview decodes, JPEG, WebP, GIF, BMP — and paint on top. Save writes a true-white PNG straight from the canvas. Rust never touches an image codec; it just moves bytes.
+  - tag: Color & size
+    title: Any color, 1 to 64 px
+    blurb: A color well for arbitrary RGB with a strip of recent swatches, and one brush-size slider that drives the brush, eraser, lines and shape strokes alike. The bracket keys nudge the size.
+  - tag: Undo
+    title: Thirty steps back
+    blurb: Every committed stroke snapshots the canvas. Ctrl+Z walks back up to thirty levels; Ctrl+Shift+Z walks forward again. An in-flight drag stays undo-free until you let go.
+  - tag: Tauri · Rust
+    title: Native Linux
+    blurb: A thin Rust byte courier behind a system-webview canvas. AppImage and .deb, PNG file associations, XDG dirs. No Electron, no telemetry, no accounts, no settings panel.
+extension: ".png"
+keybindings:
+  - { action: New canvas, keys: "Ctrl+N" }
+  - { action: Open, keys: "Ctrl+O" }
+  - { action: Save, keys: "Ctrl+S" }
+  - { action: Save As, keys: "Ctrl+Shift+S" }
+  - { action: Undo / Redo, keys: "Ctrl+Z / ⇧" }
+  - { action: Pencil / Brush / Eraser, keys: "P / B / E" }
+  - { action: Line / Rectangle / Ellipse, keys: "L / R / O" }
+  - { action: Fill / Pick color, keys: "G / I" }
+  - { action: Brush size down / up, keys: "[ / ]" }
+  - { action: Clear canvas, keys: "Ctrl+Backspace" }
+mock:
+  filename: "untitled.png"
+  dirty: true
+  state: "960 × 600 · Brush 12px · x 412 · y 248"
+---
+<style>
+  .pt-grid {
+    display: grid;
+    grid-template-columns: 188px 1fr;
+    min-height: 340px;
+  }
+  .pt-aux {
+    background: rgba(48, 52, 63, 0.03);
+    border-right: 1px solid var(--rule);
+    padding: 18px 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .pt-block { margin-bottom: 18px; }
+  .pt-header {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+  .pt-tools {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .pt-tool {
+    aspect-ratio: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    color: var(--muted);
+  }
+  .pt-tool svg { width: 15px; height: 15px; }
+  .pt-tool.on {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(221, 117, 150, 0.10);
+  }
+  .pt-well {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .pt-swatch {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid var(--rule-strong);
+    background: #DD7596;
+  }
+  .pt-well span { color: var(--ink); }
+  .pt-size { margin-bottom: 10px; }
+  .pt-size-hdr {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    color: var(--muted);
+  }
+  .pt-size-hdr b { color: var(--ink); font-weight: 500; }
+  .pt-track {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--rule-strong);
+    position: relative;
+  }
+  .pt-track::after {
+    content: "";
+    position: absolute;
+    left: 22%;
+    top: 50%;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--accent);
+    transform: translate(-50%, -50%);
+  }
+  .pt-recent { display: flex; gap: 5px; }
+  .pt-recent i {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid var(--rule);
+    display: block;
+  }
+  .pt-edit { display: flex; gap: 6px; }
+  .pt-ebtn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 0;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    color: var(--muted);
+  }
+  .pt-ebtn svg { width: 14px; height: 14px; }
+
+  .pt-main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    gap: 12px;
+  }
+  .pt-canvas {
+    background: #ffffff;
+    border: 1px solid var(--rule-strong);
+    border-radius: 4px;
+    box-shadow: 0 12px 28px -16px rgba(48, 52, 63, 0.28);
+    width: 100%;
+    max-width: 380px;
+  }
+  .pt-canvas svg { width: 100%; height: auto; display: block; border-radius: 4px; }
+  .pt-info {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+</style>
+<div class="pt-grid">
+  <nav class="pt-aux">
+    <div class="pt-block">
+      <div class="pt-header">Tools</div>
+      <div class="pt-tools">
+        <div class="pt-tool" title="Pencil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></div>
+        <div class="pt-tool on" title="Brush"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02Z"/></svg></div>
+        <div class="pt-tool" title="Eraser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l9.6-9.6a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg></div>
+        <div class="pt-tool" title="Line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg></div>
+        <div class="pt-tool" title="Rectangle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>
+        <div class="pt-tool" title="Ellipse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg></div>
+        <div class="pt-tool" title="Fill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/></svg></div>
+        <div class="pt-tool" title="Pick color"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 1-4 9-9"/><path d="m12 9 3 3"/><path d="m15 6 3.4-3.4a2.1 2.1 0 0 1 3 3L18 9l1 1a2.1 2.1 0 0 1-3 3l-4-4a2.1 2.1 0 0 1 3-3Z"/></svg></div>
+      </div>
+    </div>
+    <div class="pt-block">
+      <div class="pt-header">Color</div>
+      <div class="pt-well"><span class="pt-swatch"></span><span>#DD7596</span></div>
+      <div class="pt-size">
+        <div class="pt-size-hdr"><span>Size</span><b>12px</b></div>
+        <div class="pt-track"></div>
+      </div>
+      <div class="pt-recent"><i style="background:#30343F"></i><i style="background:#DD7596"></i><i style="background:#FF82BF"></i><i style="background:#ffffff"></i></div>
+    </div>
+    <div class="pt-block">
+      <div class="pt-header">Edit</div>
+      <div class="pt-edit">
+        <div class="pt-ebtn" title="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg></div>
+        <div class="pt-ebtn" title="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg></div>
+        <div class="pt-ebtn" title="Clear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div>
+      </div>
+    </div>
+  </nav>
+  <div class="pt-main">
+    <div class="pt-canvas">
+      <svg viewBox="0 0 320 200" preserveAspectRatio="none">
+        <rect width="320" height="200" fill="#ffffff"/>
+        <circle cx="248" cy="52" r="22" fill="none" stroke="#DD7596" stroke-width="4"/>
+        <path d="M20 150 Q70 96 120 134 T232 120" fill="none" stroke="#30343F" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M40 176 C90 150 150 188 210 160 S300 150 308 168" fill="none" stroke="#DD7596" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="60" y="60" width="60" height="44" rx="2" fill="none" stroke="#30343F" stroke-width="4"/>
+      </svg>
+    </div>
+    <div class="pt-info">960 × 600 · x 412, y 248</div>
+  </div>
+</div>
