@@ -1,10 +1,6 @@
 import "@krill-software/desktop-ui/styles";
 import "./styles.css";
-import {
-  mountChrome,
-  showBootError,
-  checkForUpdates,
-} from "@krill-software/desktop-ui";
+import { mountChrome, showBootError } from "@krill-software/desktop-ui";
 
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -673,8 +669,11 @@ const GEOMETRY_TOOLS: ToolDef[] = [
 ];
 
 function buildRail(): void {
+  // The aux strip (hamburger) is owned by desktop-ui's app layout — keep it
+  // and re-render only paint's own rail content below it.
+  const strip = railEl.querySelector(".aux-topbar");
   railEl.replaceChildren();
-  railEl.appendChild(buildAuxTopbar());
+  if (strip) railEl.append(strip);
 
   railEl.appendChild(buildColorBlock());
   railEl.appendChild(buildToolGrid("Draw", DRAW_TOOLS));
@@ -824,136 +823,16 @@ function railIconBtn(icon: string, title: string, onClick: () => void, filled = 
   return b;
 }
 
-// ---- Shell topbars + hamburger ---------------------------------------
-
-function buildMainTopbar(): HTMLElement {
-  const bar = document.createElement("div");
-  bar.className = "main-topbar";
-  bar.setAttribute("data-tauri-drag-region", "true");
-
-  titleLabelEl = document.createElement("div");
-  titleLabelEl.className = "main-title";
-  titleLabelEl.setAttribute("data-tauri-drag-region", "true");
-  bar.appendChild(titleLabelEl);
-
-  const controls = document.createElement("div");
-  controls.className = "main-topbar-controls";
-  const min = topbarBtn("Minimize", "minus", () => void getCurrentWindow().minimize());
-  const max = topbarBtn("Maximize", "square", () => void getCurrentWindow().toggleMaximize());
-  const close = topbarBtn("Close", "x", () => void getCurrentWindow().close());
-  close.setAttribute("data-kind", "close");
-  controls.append(min, max, close);
-  bar.appendChild(controls);
-  return bar;
-}
-
-function topbarBtn(title: string, icon: string, onClick: () => void): HTMLButtonElement {
-  const b = document.createElement("button");
-  b.className = "main-topbar-btn";
-  b.type = "button";
-  b.title = title;
-  b.append(svgIcon(icon, title === "Maximize" ? 12 : 14));
-  b.addEventListener("click", onClick);
-  return b;
-}
-
-function buildAuxTopbar(): HTMLElement {
-  const bar = document.createElement("div");
-  bar.className = "aux-topbar";
-  bar.setAttribute("data-tauri-drag-region", "true");
-  const hamburger = document.createElement("button");
-  hamburger.className = "main-topbar-btn";
-  hamburger.type = "button";
-  hamburger.title = "Menu";
-  hamburger.append(svgIcon("menu", 16));
-  hamburger.addEventListener("click", (e) => {
-    e.stopPropagation();
-    toggleHamburgerMenu(bar);
-  });
-  bar.appendChild(hamburger);
-  return bar;
-}
-
-type MenuItem =
-  | { label: string; shortcut?: string; action: () => void; enabled?: () => boolean }
-  | { sep: true };
-
-function toggleHamburgerMenu(anchor: HTMLElement): void {
-  const existing = document.querySelector(".menu-popover");
-  if (existing) {
-    existing.remove();
-    return;
-  }
-  const pop = document.createElement("div");
-  pop.className = "menu-popover";
-  const items: MenuItem[] = [
-    { label: "New", shortcut: "Ctrl+N", action: () => newCanvas() },
-    { label: "Open…", shortcut: "Ctrl+O", action: () => void openViaDialog() },
-    { sep: true },
-    { label: "Save", shortcut: "Ctrl+S", action: () => void save() },
-    { label: "Save as…", shortcut: "Ctrl+Shift+S", action: () => void saveAs() },
-    { sep: true },
-    { label: "Undo", shortcut: "Ctrl+Z", action: () => undo(), enabled: () => undoStack.length > 0 },
-    { label: "Redo", shortcut: "Ctrl+Shift+Z", action: () => redo(), enabled: () => redoStack.length > 0 },
-    { sep: true },
-    { label: "Check for updates…", action: () => void checkForUpdates("Paint") },
-    { label: "Quit", shortcut: "Ctrl+Q", action: () => void getCurrentWindow().close() },
-  ];
-  for (const it of items) {
-    if ("sep" in it) {
-      const s = document.createElement("div");
-      s.className = "menu-popover-sep";
-      pop.appendChild(s);
-      continue;
-    }
-    const btn = document.createElement("button");
-    btn.className = "menu-popover-item";
-    btn.type = "button";
-    const label = document.createElement("span");
-    label.textContent = it.label;
-    btn.appendChild(label);
-    if (it.shortcut) {
-      const k = document.createElement("span");
-      k.className = "menu-popover-shortcut";
-      k.textContent = it.shortcut;
-      btn.appendChild(k);
-    }
-    if (it.enabled && !it.enabled()) btn.setAttribute("disabled", "");
-    btn.addEventListener("click", () => {
-      if (it.enabled && !it.enabled()) return;
-      pop.remove();
-      it.action();
-    });
-    pop.appendChild(btn);
-  }
-  anchor.parentElement?.appendChild(pop);
-  setTimeout(() => {
-    const handler = (ev: MouseEvent) => {
-      if (!pop.contains(ev.target as Node)) {
-        pop.remove();
-        document.removeEventListener("click", handler);
-      }
-    };
-    document.addEventListener("click", handler);
-  }, 0);
-}
-
 // ---- Keyboard ---------------------------------------------------------
 
 function installKeyboard(): void {
   window.addEventListener("keydown", (e) => {
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
-    const mod = e.ctrlKey || e.metaKey;
-
-    if (mod && e.code === "KeyN") { e.preventDefault(); newCanvas(); return; }
-    if (mod && e.code === "KeyO") { e.preventDefault(); void openViaDialog(); return; }
-    if (mod && e.code === "KeyS" && !e.shiftKey) { e.preventDefault(); void save(); return; }
-    if (mod && e.code === "KeyS" && e.shiftKey) { e.preventDefault(); void saveAs(); return; }
-    if (mod && e.code === "KeyZ" && !e.shiftKey) { e.preventDefault(); undo(); return; }
-    if (mod && e.code === "KeyZ" && e.shiftKey) { e.preventDefault(); redo(); return; }
-    if (mod && e.code === "Backspace") { e.preventDefault(); clearCanvas(); return; }
-    if (mod) return; // leave other ctrl combos alone
+    // File/edit shortcuts (Ctrl+N/O/S/Z, Ctrl+Backspace) are owned by
+    // desktop-ui's action registry — only the single-key tool / brush-size
+    // bindings live here.
+    if (e.ctrlKey || e.metaKey) return;
 
     switch (e.code) {
       // Draw
@@ -1085,19 +964,41 @@ function svgIcon(kind: string, size = 16, filled = false): SVGSVGElement {
 function initChrome(): void {
   const chrome = mountChrome({
     productName: "Paint",
-    actions: {},
+    version: __APP_VERSION__,
+    layout: "app",
     showAuxPane: true,
-    showStatusLine: false,
     updater: true,
+    actions: {
+      new: () => newCanvas(),
+      open: () => void openViaDialog(),
+      save: () => void save(),
+      "save-as": () => void saveAs(),
+      undo: () => undo(),
+      redo: () => redo(),
+    },
+    customMenu: [
+      {
+        group: "edit",
+        items: [
+          { label: "Clear canvas", shortcut: "Ctrl+Backspace", action: () => clearCanvas() },
+        ],
+      },
+    ],
   });
   viewportEl = chrome.viewport;
   railEl = chrome.aux!;
   railEl.setAttribute("aria-label", "Tools");
 
-  const mainTopbar = buildMainTopbar();
+  // App layout: desktop-ui owns the main-topbar's window controls + drag
+  // region and the aux hamburger menu. Paint's filename + dirty marker is
+  // app-specific document chrome, so inject it into that shared strip.
+  titleLabelEl = document.createElement("div");
+  titleLabelEl.className = "main-title";
+  titleLabelEl.setAttribute("data-tauri-drag-region", "");
+  const mainTopbar = viewportEl.querySelector(".main-topbar");
+  if (mainTopbar) mainTopbar.prepend(titleLabelEl);
 
-  const content = document.createElement("div");
-  content.className = "main-content";
+  const content = chrome.mainContent!;
 
   const scroll = document.createElement("div");
   scroll.id = "canvas-scroll";
@@ -1117,15 +1018,11 @@ function initChrome(): void {
   infoEl.className = "mono";
   content.appendChild(infoEl);
 
-  viewportEl.replaceChildren(mainTopbar, content);
-
   bctx = bitmap.getContext("2d")!;
   octx = overlay.getContext("2d")!;
 
   buildRail();
   setTool(tool);
-
-  document.body.dataset.aux = "visible";
 }
 
 async function boot(): Promise<void> {
