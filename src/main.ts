@@ -1,6 +1,6 @@
 import "@krill-software/desktop-ui/styles";
 import "./styles.css";
-import { mountChrome, showBootError } from "@krill-software/desktop-ui";
+import { mountChrome, parseGpl, showBootError } from "@krill-software/desktop-ui";
 
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -606,6 +606,34 @@ function addRecent(hex: string): void {
   paintSwatches();
 }
 
+// Load a .gpl palette (the shared krill format, also written by color-editor)
+// into the swatch strip. Rust read_text couriers the file; the shared
+// desktop-ui parser does the rest.
+async function openPalette(): Promise<void> {
+  const selected = await openDialog({
+    multiple: false,
+    directory: false,
+    filters: [{ name: "GIMP Palette", extensions: ["gpl"] }],
+  });
+  if (typeof selected !== "string") return;
+  let text: string;
+  try {
+    text = await invoke<string>("read_text", { path: selected });
+  } catch (e) {
+    console.error("open palette failed:", e);
+    return;
+  }
+  const hexes: string[] = [];
+  for (const c of parseGpl(text).colors) {
+    const h = c.hex.toLowerCase();
+    if (!hexes.includes(h)) hexes.push(h);
+  }
+  if (hexes.length === 0) return;
+  recent = hexes.slice(0, 8);
+  paintSwatches();
+  setColor(recent[0]);
+}
+
 function paintSwatches(): void {
   if (!swatchRow) return;
   swatchRow.replaceChildren();
@@ -977,6 +1005,12 @@ function initChrome(): void {
       redo: () => redo(),
     },
     customMenu: [
+      {
+        group: "file",
+        items: [
+          { label: "Open palette…", action: () => void openPalette() },
+        ],
+      },
       {
         group: "edit",
         items: [

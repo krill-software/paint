@@ -138,6 +138,17 @@ fn save_state(state: AppState) -> Result<(), String> {
     kstate::save(SLUG, "state.json", &state)
 }
 
+// Read a text file (a .gpl palette); the webview parses it with the shared
+// desktop-ui parser and loads the colors into the swatch strip.
+#[tauri::command]
+fn read_text(path: String) -> Result<String, String> {
+    let p = Path::new(&path);
+    let bytes = kfs::read_bytes(p)?;
+    String::from_utf8(bytes).map_err(|e| {
+        kfs::format_io_err(&path, std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    })
+}
+
 #[tauri::command]
 fn dev_test_file() -> Option<String> {
     kdev::test_file(env!("CARGO_MANIFEST_DIR"), &["test.png"])
@@ -160,6 +171,7 @@ pub fn run() {
             clear_path,
             load_state,
             save_state,
+            read_text,
             dev_test_file,
         ])
         .run(tauri::generate_context!())
