@@ -3,8 +3,6 @@ layout: app
 tagline: a calm single-file paint program for Linux
 description: A minimal single-file Linux paint program. Blank canvas on launch, brush and shape tools, flood fill, eyedropper, undo, save as PNG. One bitmap, no layers.
 og_description: A calm single-file paint program for Linux. Free and open source.
-eyebrow: A paint program for Linux
-heading: "Draw it, <em>save</em> it."
 lede: Open a blank canvas the moment it launches. Draw freehand, lay down lines and boxes and ellipses, flood-fill a region, pick a color off the canvas, undo. Save it as a PNG. The bar is the paint program you already know — not a layered compositor.
 features_heading: One canvas. The 80% of paint.
 features:
@@ -39,7 +37,7 @@ mock:
     min-height: 340px;
   }
   .pt-aux {
-    background: rgba(48, 52, 63, 0.03);
+    background: rgba(var(--ink-rgb), 0.03);
     border-right: 1px solid var(--rule);
     padding: 18px 14px;
     font-family: var(--mono);
