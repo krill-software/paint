@@ -606,7 +606,7 @@ function addRecent(hex: string): void {
   paintSwatches();
 }
 
-// Load a .gpl palette (the shared krill format, also written by color-editor)
+// Load a .gpl palette (the shared krill format, also written by palette-editor)
 // into the swatch strip. Rust read_text couriers the file; the shared
 // desktop-ui parser does the rest.
 async function openPalette(): Promise<void> {
