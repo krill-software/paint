@@ -30,11 +30,9 @@ body {
 
 /* App-layout surfaces ============================================== */
 
-/* Subtle aux (rail) tint — main stays pure Ghost White. The flex stack,
- * window controls, hamburger, and drag regions come from desktop-ui. */
+/* The flex stack, window controls, hamburger, and drag regions come from
+ * desktop-ui. */
 #aux {
-  background: rgba(48, 52, 63, 0.03);
-  border-right: 0;
   padding: 12px;
 }
 /* Span the aux padding so desktop-ui's strip sits flush at the top. */
